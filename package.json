@@ -1,0 +1,32 @@
+{
+  "name": "@tencent/ags-remote-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Remote multi-user browser MCP server: OAuth2 Resource Server + AgentSandbox backend, wrapping Playwright's built-in MCP (playwright-core) via createConnection.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "ags-remote-mcp": "./lib/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "start": "node lib/cli.js"
+  },
+  "dependencies": {
+    "@e2b/code-interpreter": "2.8.0",
+    "@modelcontextprotocol/sdk": "^1.16.0",
+    "debug": "^4.4.1",
+    "jose": "^5.10.0",
+    "pg": "^8.13.0",
+    "playwright-core": "1.64.0-alpha-1789764292000"
+  },
+  "devDependencies": {
+    "@types/debug": "^4.1.12",
+    "@types/node": "^22.13.10",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.8.2"
+  }
+}
