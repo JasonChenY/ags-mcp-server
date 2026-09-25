@@ -32,13 +32,15 @@ export type StartOptions = {
   registry: SandboxRegistry;
   /** Passed through to Playwright's createConnection (browser comes from contextGetter). */
   mcpConfig?: unknown;
+  /** When false, Playwright's browser_* tools are hidden (server only serves sandbox_* tools). Default true. */
+  exportPlaywrightTools?: boolean;
 };
 
 const ANONYMOUS: AuthContext = { userId: 'default' };
 
 async function createUserServer(options: StartOptions, authContext: AuthContext, sessionId: string): Promise<Server> {
   const server = await createConnection(options.mcpConfig, browserContextGetter(options.registry, authContext));
-  addSandboxTools(server, options.registry, authContext, sessionId);
+  addSandboxTools(server, options.registry, authContext, sessionId, options.exportPlaywrightTools ?? true);
   return server;
 }
 

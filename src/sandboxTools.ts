@@ -132,6 +132,12 @@ export async function handleSandboxTool(name: string | undefined, args: Args, re
     const host = sandbox.getHost(9000);
     const token = (sandbox as unknown as { envdAccessToken?: string }).envdAccessToken ?? '';
     const lines = SANDBOX_SURFACES.map(s => `${s.label}: https://${host}/${s.path}?access_token=${token}`);
+    // Also surface the config a client needs to point a local Playwright MCP at this sandbox's CDP.
+    const cdpEndpoint = `https://${host}/cdp`;
+    lines.push('', 'Playwright MCP config:');
+    lines.push(`PLAYWRIGHT_MCP_CDP_ENDPOINT=${cdpEndpoint}`);
+    lines.push(`PLAYWRIGHT_MCP_CDP_HEADERS=X-Access-Token: ${token}`);
+    lines.push(`claude mcp add playwright -e "PLAYWRIGHT_MCP_CDP_ENDPOINT"="${cdpEndpoint}" -e "PLAYWRIGHT_MCP_CDP_HEADERS"="X-Access-Token: ${token}" -- npx @playwright/mcp@latest`);
     return { handled: true, result: text(lines.join('\n')) };
   }
 

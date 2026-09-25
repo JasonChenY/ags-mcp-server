@@ -44,6 +44,7 @@ async function main() {
     registry,
     // outputDir doubles as Playwright's file-access allowed root; we stage uploads under it.
     mcpConfig: { outputDir: OUTPUT_DIR },
+    exportPlaywrightTools: (process.env.EXPORT_PLAYWRIGHT_TOOLS ?? 'true') !== 'false',
   });
 }
 

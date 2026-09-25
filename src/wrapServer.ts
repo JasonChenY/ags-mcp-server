@@ -46,13 +46,18 @@ const UPLOAD_SCHEMA = {
  * - override `browser_file_upload` so clients pass file bytes inline — we stage them on the
  *   server (where Playwright reads uploads from), delegate to core with the staged paths, then
  *   delete the staged files once core has consumed them.
+ * - `exportPlaywrightTools` (default true): when false, Playwright's browser_* tools are hidden from
+ *   tools/list and rejected on call — the server only serves the sandbox_* tools (useful when
+ *   clients drive the browser themselves via the exposed CDP URL).
  */
-export function addSandboxTools(server: Server, registry: SandboxRegistry, authContext: AuthContext, sessionId: string): void {
+export function addSandboxTools(server: Server, registry: SandboxRegistry, authContext: AuthContext, sessionId: string, exportPlaywrightTools = true): void {
   const handlers = (server as unknown as { _requestHandlers: Map<string, Handler> })._requestHandlers;
   const coreList = handlers.get('tools/list');
   const coreCall = handlers.get('tools/call');
 
   server.setRequestHandler(ListToolsRequestSchema, async (req: any, extra: any) => {
+    if (!exportPlaywrightTools)
+      return { tools: [...SANDBOX_TOOL_DEFS] };
     const res = coreList ? await coreList(req, extra) : { tools: [] };
     const tools = (res.tools ?? []).map((t: any) => t.name === 'browser_file_upload'
       ? { ...t, description: 'Upload files to the page\'s file chooser. Provide file bytes inline via `files`; they are delivered to the browser. Trigger the file chooser first (e.g. click the upload control).', inputSchema: UPLOAD_SCHEMA }
@@ -62,6 +67,17 @@ export function addSandboxTools(server: Server, registry: SandboxRegistry, authC
 
   server.setRequestHandler(CallToolRequestSchema, async (req: any, extra: any) => {
     const name = req.params?.name;
+
+    const handled = await handleSandboxTool(name, req.params?.arguments, registry, authContext);
+    if (handled.handled)
+      return handled.result;
+
+    if (!exportPlaywrightTools) {
+      return {
+        content: [{ type: 'text', text: `Error: Playwright browser tools are disabled on this server. "${name}" is not available. Use the sandbox_access_urls tool to obtain a CDP endpoint and drive the browser with your own Playwright instance.` }],
+        isError: true,
+      };
+    }
 
     if (name === 'browser_file_upload') {
       const files = Array.isArray(req.params?.arguments?.files) ? req.params.arguments.files : [];
@@ -86,9 +102,6 @@ export function addSandboxTools(server: Server, registry: SandboxRegistry, authC
       }
     }
 
-    const handled = await handleSandboxTool(name, req.params?.arguments, registry, authContext);
-    if (handled.handled)
-      return handled.result;
     if (coreCall)
       return coreCall(req, extra);
     throw new Error(`Unknown tool: ${name}`);
