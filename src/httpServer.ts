@@ -15,6 +15,7 @@ import { PROTECTED_RESOURCE_METADATA_PATH, protectedResourceMetadata, bearerChal
 import { browserContextGetter } from './sandboxContext.js';
 import { addSandboxTools } from './wrapServer.js';
 import { createConnection } from './pwmcp.js';
+import { startStagingReaper, cleanupSessionStaging } from './staging.js';
 import { testDebug } from './log.js';
 
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -35,9 +36,9 @@ export type StartOptions = {
 
 const ANONYMOUS: AuthContext = { userId: 'default' };
 
-async function createUserServer(options: StartOptions, authContext: AuthContext): Promise<Server> {
+async function createUserServer(options: StartOptions, authContext: AuthContext, sessionId: string): Promise<Server> {
   const server = await createConnection(options.mcpConfig, browserContextGetter(options.registry, authContext));
-  addSandboxTools(server, options.registry, authContext);
+  addSandboxTools(server, options.registry, authContext, sessionId);
   return server;
 }
 
@@ -45,6 +46,9 @@ export async function startServer(options: StartOptions): Promise<void> {
   const { host, port, tls, auth } = options;
   if (auth && !tls)
     console.error('Warning: bearer auth is enabled over plain HTTP; ensure TLS is terminated by a trusted reverse proxy.');
+
+  // Clear orphaned upload staging from a previous run, then reap stale dirs periodically.
+  startStagingReaper(30 * 60 * 1000);
 
   const verify = auth ? createTokenVerifier(auth) : undefined;
   const sessions = new Map<string, StreamableHTTPServerTransport>();
@@ -112,14 +116,16 @@ async function handleStreamable(options: StartOptions, req: http.IncomingMessage
       sessionIdGenerator: () => crypto.randomUUID(),
       onsessioninitialized: async (sid: string) => {
         testDebug(`create session ${sid} for ${authContext.username ?? authContext.userId}`);
-        const server = await createUserServer(options, authContext);
+        const server = await createUserServer(options, authContext, sid);
         await server.connect(transport);
         sessions.set(sid, transport);
       },
     });
     transport.onclose = () => {
-      if (transport.sessionId)
+      if (transport.sessionId) {
         sessions.delete(transport.sessionId);
+        void cleanupSessionStaging(transport.sessionId);
+      }
     };
     await transport.handleRequest(req, res);
     return;

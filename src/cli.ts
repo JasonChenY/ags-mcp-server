@@ -10,6 +10,7 @@ import { resolveAuthConfig } from './auth/config.js';
 import { SandboxRegistry } from './sandbox/registry.js';
 import { PostgresSandboxStore } from './sandbox/store.js';
 import { startServer } from './httpServer.js';
+import { OUTPUT_DIR } from './staging.js';
 
 import type { TlsOptions } from './httpServer.js';
 
@@ -41,7 +42,8 @@ async function main() {
     tls: loadTls(),
     auth: resolveAuthConfig({}),
     registry,
-    mcpConfig: {},
+    // outputDir doubles as Playwright's file-access allowed root; we stage uploads under it.
+    mcpConfig: { outputDir: OUTPUT_DIR },
   });
 }
 
