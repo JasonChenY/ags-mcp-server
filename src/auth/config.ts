@@ -11,6 +11,8 @@ export type AuthCLIOptions = {
   resourceUrl?: string;
   audience?: string;
   allowedAzp?: string[];
+  clientId?: string;
+  clientSecret?: string;
 };
 
 function commaSeparatedList(value: string | undefined): string[] | undefined {
@@ -32,11 +34,18 @@ export function resolveAuthConfig(options: AuthCLIOptions): AuthConfig | undefin
   if (!issuer || !resource)
     throw new Error('Both an OIDC issuer (--oidc-issuer) and a resource URL (--resource-url) are required to enable auth.');
 
+  const clientId = options.clientId ?? process.env.AGS_MCP_CLIENT_ID;
+  const clientSecret = options.clientSecret ?? process.env.AGS_MCP_CLIENT_SECRET;
+  if ((clientId && !clientSecret) || (!clientId && clientSecret))
+    throw new Error('Both AGS_MCP_CLIENT_ID and AGS_MCP_CLIENT_SECRET are required to enable confidential-client introspection.');
+
   return {
     issuer,
     resource,
     audience: options.audience ?? process.env.AGS_MCP_AUDIENCE,
     jwksUri: process.env.AGS_MCP_JWKS_URI,
     allowedAzp: options.allowedAzp ?? commaSeparatedList(process.env.AGS_MCP_ALLOWED_AZP),
+    clientId,
+    clientSecret,
   };
 }

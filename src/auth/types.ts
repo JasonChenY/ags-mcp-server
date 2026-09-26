@@ -18,6 +18,12 @@ export type AuthConfig = {
   allowedAzp?: string[];
   /** Authorization servers advertised in protected-resource metadata. Defaults to `[issuer]`. */
   authorizationServers?: string[];
+  /** Confidential-client id for RFC 7662 token introspection. When both `clientId` and
+   *  `clientSecret` are set, incoming tokens are validated via the introspection endpoint
+   *  instead of local JWKS signature verification. */
+  clientId?: string;
+  /** Client secret paired with `clientId`. */
+  clientSecret?: string;
 };
 
 /** Identity extracted from a validated access token, bound to a session. */

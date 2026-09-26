@@ -58,11 +58,34 @@ COPY --from=builder --chown=${USERNAME}:${USERNAME} /app/lib /app/lib
 EXPOSE 8931
 
 # Configuration via environment variables at runtime:
-#   E2B_API_KEY, E2B_DOMAIN                              (AGS sandbox platform credentials)
-#   AGS_MCP_OIDC_ISSUER, AGS_MCP_RESOURCE_URL, AGS_MCP_AUDIENCE
-#   AGS_MCP_ALLOWED_AZP                                  (optional client_id allowlist)
-#   AGS_MCP_DATABASE_URL                                 (optional Postgres mapping persistence)
-#   AGS_MCP_TLS_CERT / AGS_MCP_TLS_KEY                   (optional in-process HTTPS)
-#   AGS_MCP_SANDBOX_TEMPLATE (default browser-v1), AGS_MCP_SANDBOX_TIMEOUT_MS (default 300000)
+#
+#   Sandbox (required):
+#     E2B_API_KEY                   AGS sandbox platform API key
+#     E2B_DOMAIN                    AGS sandbox domain (optional)
+#
+#   Auth — Resource Server (required to enable auth):
+#     AGS_MCP_OIDC_ISSUER           OIDC issuer URL, e.g. https://keycloak.example.com/realms/myrealm
+#     AGS_MCP_RESOURCE_URL          Canonical URL of this resource server
+#
+#   Auth — Confidential Client (optional; enables RFC 7662 token introspection):
+#     AGS_MCP_CLIENT_ID             Keycloak client_id (must have Client Authentication enabled)
+#     AGS_MCP_CLIENT_SECRET         Matching client secret
+#     Without these two, the server falls back to local JWKS signature verification.
+#
+#   Auth — fine-grained (optional):
+#     AGS_MCP_AUDIENCE              Expected `aud` claim (defaults to AGS_MCP_RESOURCE_URL)
+#     AGS_MCP_ALLOWED_AZP           Comma-separated allowlist of `azp` (client_id) values
+#
+#   Persistence (optional):
+#     AGS_MCP_DATABASE_URL          PostgreSQL connection URL for sandbox mapping persistence
+#
+#   TLS (optional; prefer terminating at a reverse proxy):
+#     AGS_MCP_TLS_CERT              Path to TLS certificate file inside the container
+#     AGS_MCP_TLS_KEY               Path to TLS private key file inside the container
+#
+#   Sandbox tuning (optional):
+#     AGS_MCP_SANDBOX_TEMPLATE      Sandbox template name (default: browser-v1)
+#     AGS_MCP_SANDBOX_TIMEOUT_MS    Idle-before-hibernate timeout in ms (default: 300000)
+#
 # Do NOT bake secrets into the image; pass them with `docker run --env-file` / a secret store.
 ENTRYPOINT ["node", "lib/cli.js"]

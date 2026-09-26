@@ -6,15 +6,32 @@
 
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
+import { createTokenIntrospector } from './tokenIntrospector.js';
 import type { AuthConfig, AuthContext } from './types.js';
 
 export type TokenVerifier = (bearer: string) => Promise<AuthContext>;
 
 /**
- * Build a Resource Server token verifier. Validates a bearer access token against the
- * issuer's JWKS and returns the caller identity. `createRemoteJWKSet` caches/rotates keys.
+ * Build a token verifier for the Resource Server.
+ *
+ * When `clientId` and `clientSecret` are configured the server acts as a
+ * Confidential Client and delegates validation to Keycloak's introspection
+ * endpoint (RFC 7662), discovered via OIDC Discovery (RFC 8414). This is the
+ * preferred path: it works for opaque tokens, and Keycloak enforces revocation
+ * in real time.
+ *
+ * When no client credentials are configured the server falls back to local
+ * JWKS signature verification — suitable for development or environments where
+ * network calls to the authorization server are not possible.
  */
-export function createTokenVerifier(config: AuthConfig): TokenVerifier {
+export async function createTokenVerifier(config: AuthConfig): Promise<TokenVerifier> {
+  if (config.clientId && config.clientSecret)
+    return createTokenIntrospector(config);
+
+  return createJwksVerifier(config);
+}
+
+function createJwksVerifier(config: AuthConfig): TokenVerifier {
   const jwksUri = config.jwksUri ?? `${config.issuer}/protocol/openid-connect/certs`;
   // Generous timeout: the JWKS endpoint may be slow on first fetch; keys are cached after.
   const jwks = createRemoteJWKSet(new URL(jwksUri), { timeoutDuration: 15000 });

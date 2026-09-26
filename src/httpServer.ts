@@ -52,7 +52,7 @@ export async function startServer(options: StartOptions): Promise<void> {
   // Clear orphaned upload staging from a previous run, then reap stale dirs periodically.
   startStagingReaper(30 * 60 * 1000);
 
-  const verify = auth ? createTokenVerifier(auth) : undefined;
+  const verify = auth ? await createTokenVerifier(auth) : undefined;
   const sessions = new Map<string, StreamableHTTPServerTransport>();
 
   const httpServer: http.Server = tls ? https.createServer({ key: tls.key, cert: tls.cert }) : http.createServer();
