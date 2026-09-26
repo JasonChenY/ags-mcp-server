@@ -53,6 +53,19 @@ export async function startServer(options: StartOptions): Promise<void> {
   startStagingReaper(30 * 60 * 1000);
 
   const verify = auth ? await createTokenVerifier(auth) : undefined;
+
+  if (!auth) {
+    console.error('Auth: disabled (open mode — set AGS_MCP_OIDC_ISSUER + AGS_MCP_RESOURCE_URL to enable)');
+  } else if (auth.clientId) {
+    console.error(`Auth: confidential-client introspection  client_id=${auth.clientId}  issuer=${auth.issuer}`);
+  } else {
+    console.error(`Auth: JWKS local verification  issuer=${auth.issuer}`);
+  }
+
+  const caps = (options.mcpConfig as any)?.capabilities as string[] | undefined;
+  if (caps?.length)
+    console.error(`Playwright caps: ${caps.join(', ')}`);
+
   const sessions = new Map<string, StreamableHTTPServerTransport>();
 
   const httpServer: http.Server = tls ? https.createServer({ key: tls.key, cert: tls.cert }) : http.createServer();

@@ -24,6 +24,13 @@ function loadTls(): TlsOptions | undefined {
   return { cert: fs.readFileSync(certPath), key: fs.readFileSync(keyPath) };
 }
 
+function loadCapabilities(): string[] | undefined {
+  const raw = process.env.PLAYWRIGHT_MCP_CAPS;
+  if (!raw)
+    return undefined;
+  return raw.split(',').map(s => s.trim()).filter(Boolean);
+}
+
 async function main() {
   const port = Number(process.env.AGS_MCP_PORT ?? '8931');
   const host = process.env.AGS_MCP_HOST ?? '0.0.0.0';
@@ -36,6 +43,8 @@ async function main() {
     store: databaseUrl ? new PostgresSandboxStore(databaseUrl) : undefined,
   });
 
+  const capabilities = loadCapabilities();
+
   await startServer({
     host,
     port,
@@ -43,7 +52,9 @@ async function main() {
     auth: resolveAuthConfig({}),
     registry,
     // outputDir doubles as Playwright's file-access allowed root; we stage uploads under it.
-    mcpConfig: { outputDir: OUTPUT_DIR },
+    // capabilities: extra Playwright MCP tool groups to expose, e.g. ['vision', 'pdf', 'devtools'].
+    // Configured via PLAYWRIGHT_MCP_CAPS env (comma-separated).
+    mcpConfig: { outputDir: OUTPUT_DIR, ...(capabilities && { capabilities }) },
     exportPlaywrightTools: (process.env.EXPORT_PLAYWRIGHT_TOOLS ?? 'true') !== 'false',
   });
 }
