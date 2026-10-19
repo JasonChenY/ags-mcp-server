@@ -18,6 +18,88 @@ It is a thin, standalone service that wraps Playwright's built-in MCP implementa
 
 It depends only on `playwright-core` (no dependency on the `@playwright/mcp` wrapper package).
 
+## 架构 · 用户交互时序
+
+下图为单张用户交互时序图(授权服务器 / Postgres / AGS 沙箱 / 平台 E2B APIkey 全部体现;源见 `docs/sequence.py`,改消息后重跑即可重出图)。
+
+```
+用户                 Agent           授权服务器            ags-remote-mcp        Postgres             沙箱
+  |                  |                  |                  |                  |                  |
+=========================================================================================================
+阶段① 登录(仅首次,之后自动续期)
+=========================================================================================================
+  |                  |                  |                  |                  |                  |
+  ------[1]发起-------->                  |                  |                  |                  |
+  |                  ----------[2]连/mcp(无token)------------>                  |                  |
+  |                  <-------------[3]401挑战-----------------                  |                  |
+  |                  --[4]授权码+PKCE------>                  |                  |                  |
+  |                  |                  | 登录✓              |                  |                  |
+  |                  <----[5]token-------                  |                  |                  |
+=========================================================================================================
+阶段② 操作:打开网页
+=========================================================================================================
+  |                  |                  |                  |                  |                  |
+  ----[6]打开网页-------->                  |                  |                  |                  |
+  |                  ----------[7]navigate+Bearer---------->                  |                  |
+  |                  |                  <----[8]取JWKS-------                  |                  |
+  |                  |                  ------[9]验签-------->                  |                  |
+  |                  |          ①从access|token提取用户: userId=sub                |                  |
+  |                  |                  |                  --[10]查活跃沙箱-------->                  |
+  |                  |                  |              ②查数据库 WHERE user_id=sub|                  |
+  |                  |                  |                  <----[11]命中?--------                  |
+  |                  |                  |                  --------------[12]create-------------->
+  |                  |                  |               ③平台E2B_API_KEY建沙箱 + metadata{userId,sub} |
+  |                  |                  |                  <---------[13]sandboxId+token----------
+  |                  |                  |                  ----[14]INSERT----->                  |
+  |                  |                  |         ④写数据库 user_id=sub, state=running               |
+  |                  |                  |                  ------------[15]connectCDP------------>
+  |                  |                  |                  <------------[16]快照+截图-----------------
+  |                  <--------------[17]结果------------------                  |                  |
+  <--[18]看到网页---------                  |                  |                  |                  |
+=========================================================================================================
+阶段③ 续用/休眠(用户无感)
+=========================================================================================================
+  |                  |                  |                  |                  |                  |
+  |                  |                  |                  |                  |                  | 空闲→pause
+  |                  |                  |                  -----[s]paused----->                  |
+  |                  |                  |                  |                  |                  | 再用→resume
+  |                  |                  |                  |                  |                  | 删除→kill
+  |                  |                  |                  ----[d]deleted----->                  |
+
+四个关键机制(图中 ①②③④)
+  ① 从 access token 提取用户 : 验签后取 JWT 的 sub→userId、preferred_username→username
+  ② 数据库(Postgres)        : 建沙箱前查 getActive(user_id=sub);后文 ④ 写入;pause/delete 改状态
+  ③ 访问 AGS 沙箱的 APIkey    : 平台单个 E2B_API_KEY 只在服务端,代表平台 create/connect/kill 沙箱
+  ③ 创建沙箱带用户标识        : Sandbox.create(..., metadata={userId:用户名, sub})
+  ④ 写数据库                  : INSERT sandboxes(sandbox_id, user_id=sub, username, state='running')
+
+图例(编号对应箭头)
+  [1]  用户发起使用
+  [2]  Agent 连 /mcp(尚无 token)
+  [3]  服务端 401 + WWW-Authenticate,指向 .well-known
+  [4]  走授权码 + PKCE,拉起浏览器登录授权服务器
+  [5]  换得 access token(JWT,含 sub 唯一ID + preferred_username 用户名)
+  [6]  用户:"打开网页"
+  [7]  browser_navigate,带 Authorization: Bearer <JWT>
+  [8]  ags-remote-mcp 向授权服务器取 JWKS 公钥
+  [9]  本地验签 iss/aud/RS256 → 提取 userId=sub、username=preferred_username
+  [10] 查库:该用户有无活跃沙箱  SELECT ... WHERE user_id=sub AND state<>'deleted'
+  [11] 命中则恢复(Sandbox.connect+autoResume);未命中走 [12] 新建
+  [12] Sandbox.create(apiKey=平台 E2B_API_KEY, metadata={userId:用户名, sub},
+                      lifecycle:onTimeout=pause)   ← 建沙箱即打上用户标识
+  [13] 返回 sandboxId + envdAccessToken
+  [14] 落库 INSERT sandboxes(sandbox_id, user_id=sub, username, state='running')
+  [15] connectOverCDP(https://<host>/cdp, header X-Access-Token=沙箱token)
+       (用户 JWT 绝不透传给沙箱)
+  [16] Playwright 驱动 Chromium → 页面快照 + 截图回传
+  [17]/[18] 结果回到用户
+  [s]  空闲自动休眠 → setState('paused')(状态保留,再用自动 resume)
+  [d]  删除 → Sandbox.kill + setState('deleted')+released_at(软删,留历史)
+
+两段鉴权分离:[7] 用户段=OAuth Bearer 认人(sub);[15] 沙箱段=X-Access-Token 认沙箱。
+平台 E2B_API_KEY 只在服务端,代表平台建/连/删沙箱,绝不下发客户端。
+```
+
 ## Build & run
 
 ```bash
